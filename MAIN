@@ -1,0 +1,1745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Staff Connect — Live Campus Staff Directory & Cabin Board</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#1a1917',
+            'ink-2': '#252421',
+            'ink-3': '#2f2d29',
+            paper: '#fcfbf8',
+            'paper-2': '#f5f3ed',
+            'paper-3': '#ebe7df',
+            card: '#ffffff',
+            brass: '#9c7a42',
+            'brass-light': '#c4a265',
+            sage: '#4a7c59',
+            'sage-dark': '#2f523a',
+            brick: '#a63a34',
+            steel: '#4a607a',
+            'text-soft': '#6b6860',
+            border: '#dfdcd3',
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            serif: ['"Source Serif 4"', 'Georgia', 'serif'],
+          },
+          boxShadow: {
+            plate: '0 24px 60px rgba(0, 0, 0, 0.22)',
+            lift: '0 8px 20px rgba(0, 0, 0, 0.08)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- React & Babel CDN -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @keyframes lamp-pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.12); opacity: 0.85; }
+    }
+    .lamp {
+      width: 12px;
+      height: 12px;
+      border-radius: 9999px;
+      display: inline-block;
+      flex-shrink: 0;
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,0.15);
+    }
+    .lamp-free {
+      background-color: #10b981;
+      box-shadow: 0 0 10px 2px rgba(16, 185, 129, 0.6);
+      animation: lamp-pulse 2.6s ease-in-out infinite;
+    }
+    .lamp-busy {
+      background-color: #f59e0b;
+      box-shadow: 0 0 10px 2px rgba(245, 158, 11, 0.6);
+    }
+    .lamp-out {
+      background-color: #6b7280;
+    }
+    .field-input {
+      border-radius: 4px;
+      border: 1px solid #dfdcd3;
+      width: 100%;
+      color: #1a1917;
+      font-size: 0.875rem;
+      font-family: Inter, sans-serif;
+      background: #ffffff;
+      padding: 0.6rem 0.75rem;
+      outline: none;
+      transition: border-color 0.15s ease;
+    }
+    .field-input:focus {
+      border-color: #9c7a42;
+      box-shadow: 0 0 0 2px rgba(156, 122, 66, 0.2);
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .animate-rise {
+      animation: rise 0.25s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="bg-paper text-ink font-sans antialiased min-h-screen">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useMemo, useCallback } = React;
+
+    // --- INITIAL DATA & CONSTANTS ---
+    const DEANS_HODS_GROUP_ID = "grp-deanshods";
+    const GROUP_TITLE = "Deans & HoDs Group";
+
+    const GROUP_LABELS = {
+      leadership: "Leadership",
+      department: "Faculty & HoDs",
+      support: "Support Staff"
+    };
+
+    const SECTIONS = ["leadership", "department", "support"];
+
+    const NOTICE_CATEGORIES = ["General", "Meeting", "Examinations", "Events", "Maintenance", "Academics"];
+
+    const STATUS_TEXT = {
+      free: "In cabin — free",
+      busy: "In cabin — busy",
+      out: "Not in cabin"
+    };
+
+    const STATUS_LABELS = {
+      free: "Free",
+      busy: "Busy",
+      out: "Out"
+    };
+
+    const INITIAL_STAFF = [
+      { id: "principal@geca", name: "Dr. S. K. Mahajan", role: "Principal", dept: "Administration", grp: "leadership", cabin: true, group_member: true, is_admin: true, password: "123" },
+      { id: "deanacad@geca", name: "Dr. A. B. Thorat", role: "Dean (Academics)", dept: "Academic Section", grp: "leadership", cabin: true, group_member: true, is_admin: false, password: "123" },
+      { id: "deanrd@geca", name: "Dr. P. R. Deshmukh", role: "Dean (R&D)", dept: "Research & Development", grp: "leadership", cabin: true, group_member: true, is_admin: false, password: "123" },
+      { id: "registrar@geca", name: "Prof. M. V. Patil", role: "Registrar", dept: "Main Office", grp: "leadership", cabin: true, group_member: true, is_admin: false, password: "123" },
+      { id: "hodcivil@geca", name: "Dr. R. S. Gaikwad", role: "HoD Civil Engg", dept: "Civil Engineering", grp: "department", cabin: true, group_member: true, is_admin: false, password: "123" },
+      { id: "hodmech@geca", name: "Dr. V. K. Kulkarni", role: "HoD Mechanical Engg", dept: "Mechanical Engineering", grp: "department", cabin: true, group_member: true, is_admin: false, password: "123" },
+      { id: "hodelec@geca", name: "Dr. S. N. Joshi", role: "HoD Electrical Engg", dept: "Electrical Engineering", grp: "department", cabin: true, group_member: true, is_admin: false, password: "123" },
+      { id: "hodcse@geca", name: "Dr. U. V. Kulkarni", role: "HoD Computer Science", dept: "CSE Department", grp: "department", cabin: true, group_member: true, is_admin: false, password: "123" },
+      { id: "tpo@geca", name: "Prof. G. R. More", role: "Training & Placement Officer", dept: "T&P Cell", grp: "support", cabin: true, group_member: false, is_admin: false, password: "123" },
+      { id: "librarian@geca", name: "Ms. S. P. Shinde", role: "Chief Librarian", dept: "Central Library", grp: "support", cabin: true, group_member: false, is_admin: false, password: "123" }
+    ];
+
+    const INITIAL_CABIN = {
+      "principal@geca": { status: "free", note: "Available for urgent queries", back_at: "" },
+      "deanacad@geca": { status: "busy", note: "Curriculum meeting in progress", back_at: "3:30 PM" },
+      "hodcse@geca": { status: "free", note: "In office", back_at: "" },
+      "hodcivil@geca": { status: "out", note: "On site inspection", back_at: "4:00 PM" }
+    };
+
+    const INITIAL_MESSAGES = [
+      { id: "m1", sender: "principal@geca", recipient: "grp-deanshods", body: "Good morning Deans & HoDs. Please submit the Q3 academic review reports by 4 PM today.", urgent: true, created_at: new Date(Date.now() - 3600000 * 2).toISOString(), read_at: new Date().toISOString() },
+      { id: "m2", sender: "deanacad@geca", recipient: "grp-deanshods", body: "Received Sir. Academic section reports are consolidated.", urgent: false, created_at: new Date(Date.now() - 3600000).toISOString(), read_at: new Date().toISOString() },
+      { id: "m3", sender: "tpo@geca", recipient: "principal@geca", body: "Respected Principal Sir, campus placement drive for TCS starts tomorrow at 9 AM.", urgent: false, created_at: new Date(Date.now() - 1800000).toISOString(), read_at: null }
+    ];
+
+    const INITIAL_NOTICES = [
+      { id: "n1", author: "principal@geca", title: "Urgent Meeting: NAAC Accreditation Review", body: "All Deans and Department Heads are requested to assemble in Conference Room 1 today at 3:30 PM sharp.", category: "Meeting", urgent: true, pinned: true, created_at: new Date(Date.now() - 7200000).toISOString() },
+      { id: "n2", author: "deanacad@geca", title: "End-Semester Examination Schedule Published", body: "The tentative timetable for November end-sem exams is posted on the notice board. Kindly submit grievances by Friday.", category: "Examinations", urgent: false, pinned: false, created_at: new Date(Date.now() - 14400000).toISOString() }
+    ];
+
+    const INITIAL_APPOINTMENTS = [
+      { id: "a1", requester: "hodcse@geca", target: "principal@geca", purpose: "Approval for new AI/ML Lab workstation procurement", slot: "Tomorrow at 11:30 AM", status: "pending", created_at: new Date(Date.now() - 5400000).toISOString() }
+    ];
+
+    const INITIAL_ACTIVITY = [
+      { id: "act1", actor: "principal@geca", action: "updated cabin status", detail: "In cabin — free", created_at: new Date(Date.now() - 3600000).toISOString() },
+      { id: "act2", actor: "principal@geca", action: "posted a notice", detail: "Urgent Meeting: NAAC Accreditation Review", created_at: new Date(Date.now() - 7200000).toISOString() }
+    ];
+
+    // --- HELPER UTILITIES ---
+    function getLampClass(status) {
+      if (status === "free") return "lamp lamp-free";
+      if (status === "busy") return "lamp lamp-busy";
+      return "lamp lamp-out";
+    }
+
+    function getGroupBadgeBg(grp) {
+      if (grp === "leadership") return "bg-brass text-white";
+      if (grp === "department") return "bg-sage text-paper-3";
+      if (grp === "group") return "bg-brick text-paper-3";
+      return "bg-steel text-paper-3";
+    }
+
+    function getInitials(name) {
+      return name
+        ? name
+            .replace(/^(Dr\.|Mr\.|Mrs\.|Ms\.|Prof\.)\s*/, "")
+            .trim()
+            .split(" ")
+            .filter(Boolean)
+            .slice(0, 2)
+            .map(n => n[0])
+            .join("")
+            .toUpperCase()
+        : "?";
+    }
+
+    function formatTime(isoString) {
+      return new Date(isoString).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function formatDateLabel(isoString) {
+      const d = new Date(isoString);
+      const today = new Date();
+      return d.toDateString() === today.toDateString()
+        ? "Today"
+        : d.toLocaleDateString([], { day: "numeric", month: "short" });
+    }
+
+    function formatTimeAgo(isoString) {
+      const diff = Date.now() - new Date(isoString).getTime();
+      const mins = Math.round(diff / 60000);
+      if (mins < 1) return "just now";
+      if (mins < 60) return `${mins} min ago`;
+      const hrs = Math.round(mins / 60);
+      return hrs < 24 ? `${hrs} hr ago` : `${Math.round(hrs / 24)} d ago`;
+    }
+
+    // Audio chime trigger using Web Audio API
+    function playChimeNotification() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        const ctx = new AudioContext();
+        const now = ctx.currentTime;
+        [880, 1108.73].forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = "sine";
+          osc.frequency.value = freq;
+          const startTime = now + idx * 0.12;
+          gain.gain.setValueAtTime(0.0001, startTime);
+          gain.gain.exponentialRampToValueAtTime(0.2, startTime + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.3);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + 0.32);
+        });
+      } catch (e) {}
+    }
+
+    // --- MAIN APP COMPONENT ---
+    function App() {
+      // LocalStorage Persistence State
+      const [staff, setStaff] = useState(() => {
+        const saved = localStorage.getItem("sc_staff");
+        return saved ? JSON.parse(saved) : INITIAL_STAFF;
+      });
+
+      const [cabin, setCabin] = useState(() => {
+        const saved = localStorage.getItem("sc_cabin");
+        return saved ? JSON.parse(saved) : INITIAL_CABIN;
+      });
+
+      const [messages, setMessages] = useState(() => {
+        const saved = localStorage.getItem("sc_messages");
+        return saved ? JSON.parse(saved) : INITIAL_MESSAGES;
+      });
+
+      const [notices, setNotices] = useState(() => {
+        const saved = localStorage.getItem("sc_notices");
+        return saved ? JSON.parse(saved) : INITIAL_NOTICES;
+      });
+
+      const [appointments, setAppointments] = useState(() => {
+        const saved = localStorage.getItem("sc_appointments");
+        return saved ? JSON.parse(saved) : INITIAL_APPOINTMENTS;
+      });
+
+      const [activity, setActivity] = useState(() => {
+        const saved = localStorage.getItem("sc_activity");
+        return saved ? JSON.parse(saved) : INITIAL_ACTIVITY;
+      });
+
+      const [currentUserId, setCurrentUserId] = useState(() => {
+        return localStorage.getItem("sc_session_user") || null;
+      });
+
+      // UI States
+      const [activeTab, setActiveTab] = useState("messages");
+      const [activeThreadId, setActiveThreadId] = useState(DEANS_HODS_GROUP_ID);
+      const [showMobileSidebar, setShowMobileSidebar] = useState(false);
+
+      // Save to localStorage
+      useEffect(() => { localStorage.setItem("sc_staff", JSON.stringify(staff)); }, [staff]);
+      useEffect(() => { localStorage.setItem("sc_cabin", JSON.stringify(cabin)); }, [cabin]);
+      useEffect(() => { localStorage.setItem("sc_messages", JSON.stringify(messages)); }, [messages]);
+      useEffect(() => { localStorage.setItem("sc_notices", JSON.stringify(notices)); }, [notices]);
+      useEffect(() => { localStorage.setItem("sc_appointments", JSON.stringify(appointments)); }, [appointments]);
+      useEffect(() => { localStorage.setItem("sc_activity", JSON.stringify(activity)); }, [activity]);
+
+      const currentUser = useMemo(() => staff.find(s => s.id === currentUserId) || null, [staff, currentUserId]);
+
+      const handleSignIn = (id, password) => {
+        const found = staff.find(s => s.id === id);
+        if (!found) return { ok: false, error: "Invalid post login ID selected." };
+        if (found.password && found.password !== password) {
+          return { ok: false, error: "Incorrect password for this post." };
+        }
+        setCurrentUserId(id);
+        localStorage.setItem("sc_session_user", id);
+        setActiveThreadId(found.group_member ? DEANS_HODS_GROUP_ID : "principal@geca");
+        return { ok: true };
+      };
+
+      const handleSignOut = () => {
+        setCurrentUserId(null);
+        localStorage.removeItem("sc_session_user");
+      };
+
+      const logActivity = (actor, action, detail) => {
+        setActivity(prev => [
+          { id: "act_" + Date.now(), actor, action, detail: detail || null, created_at: new Date().toISOString() },
+          ...prev.slice(0, 39)
+        ]);
+      };
+
+      // Active online simulated presence count
+      const onlineCount = useMemo(() => Math.min(staff.length, 4), [staff.length]);
+
+      if (!currentUser) {
+        return <SignInScreen staff={staff} setStaff={setStaff} onSignIn={handleSignIn} />;
+      }
+
+      return (
+        <div className="flex min-h-screen flex-col bg-paper">
+          {/* Top Header */}
+          <HeaderBar
+            me={currentUser}
+            principal={staff.find(s => s.id === "principal@geca")}
+            principalState={cabin["principal@geca"]?.status}
+            onlineCount={onlineCount}
+            onSignOut={handleSignOut}
+          />
+
+          {/* Navigation Bar */}
+          <nav className="flex gap-1 overflow-x-auto border-b border-border bg-paper-2 px-2 md:px-4">
+            {[
+              { id: "messages", label: "Messages" },
+              { id: "notices", label: "Notice Board" },
+              { id: "appointments", label: "Appointments" },
+              { id: "overview", label: "Campus Overview" },
+              ...(currentUser.is_admin ? [{ id: "admin", label: "Roles & Access" }] : [])
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`-mb-px shrink-0 border-b-2 px-3 py-2.5 text-[12.5px] font-semibold transition-colors md:px-4 md:text-[13px] ${
+                  activeTab === tab.id
+                    ? "border-brass text-ink font-bold"
+                    : "border-transparent text-text-soft hover:text-ink"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Mobile Toggle Bar */}
+          <div className="flex items-center justify-between border-b border-border bg-paper px-3 py-2 md:hidden">
+            <button
+              type="button"
+              onClick={() => setShowMobileSidebar(prev => !prev)}
+              className="rounded-sm border border-border px-3 py-1.5 text-[12.5px] font-semibold text-ink"
+            >
+              {showMobileSidebar ? "Hide directory" : "Directory & cabin lamp"}
+            </button>
+            <span className="text-[11.5px] text-text-soft">{onlineCount} online now</span>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="flex min-h-0 flex-1 flex-col md:flex-row overflow-hidden">
+            {/* Sidebar Directory */}
+            <div className={`${showMobileSidebar ? "flex" : "hidden"} min-h-0 flex-col md:flex`}>
+              <DirectorySidebar
+                me={currentUser}
+                staff={staff}
+                cabin={cabin}
+                messages={messages}
+                setCabin={setCabin}
+                activeId={activeTab === "messages" ? activeThreadId : null}
+                onSelect={id => {
+                  setActiveThreadId(id);
+                  setActiveTab("messages");
+                  setShowMobileSidebar(false);
+                }}
+                logActivity={logActivity}
+              />
+            </div>
+
+            {/* Content Pane */}
+            <main className={`${showMobileSidebar ? "hidden" : "flex"} min-h-0 flex-1 flex-col md:flex`}>
+              {activeTab === "messages" && (
+                <MessagesView
+                  me={currentUser}
+                  staff={staff}
+                  cabin={cabin}
+                  messages={messages}
+                  setMessages={setMessages}
+                  activeId={activeThreadId}
+                />
+              )}
+
+              {activeTab === "notices" && (
+                <NoticesView
+                  me={currentUser}
+                  staff={staff}
+                  notices={notices}
+                  setNotices={setNotices}
+                  logActivity={logActivity}
+                />
+              )}
+
+              {activeTab === "appointments" && (
+                <AppointmentsView
+                  me={currentUser}
+                  staff={staff}
+                  cabin={cabin}
+                  appointments={appointments}
+                  setAppointments={setAppointments}
+                  logActivity={logActivity}
+                />
+              )}
+
+              {activeTab === "overview" && (
+                <OverviewView
+                  staff={staff}
+                  cabin={cabin}
+                  messages={messages}
+                  appointments={appointments}
+                  activity={activity}
+                  onSelect={id => {
+                    setActiveThreadId(id);
+                    setActiveTab("messages");
+                  }}
+                />
+              )}
+
+              {activeTab === "admin" && currentUser.is_admin && (
+                <AdminRolesView
+                  staff={staff}
+                  setStaff={setStaff}
+                  logActivity={logActivity}
+                />
+              )}
+            </main>
+          </div>
+        </div>
+      );
+    }
+
+    // --- HEADER BAR ---
+    function HeaderBar({ me, principal, principalState, onlineCount, onSignOut }) {
+      return (
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b-[3px] border-brass bg-ink px-6 py-3 text-paper shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-brass-light serif text-[15px] font-bold text-brass-light">
+              GC
+            </div>
+            <div>
+              <p className="text-lg font-semibold tracking-wide leading-none">Staff Connect</p>
+              <p className="text-[11px] text-paper/60 mt-0.5">Government College of Engineering · Live Campus Board</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 rounded-full border border-brass-light/35 bg-ink-2 px-4 py-1.5 text-[13.5px]">
+            <span className={getLampClass(principalState || "out")} />
+            <span className="text-paper/75">Principal’s cabin:</span>
+            <span className="font-semibold text-paper">{STATUS_LABELS[principalState || "out"]}</span>
+            {principal && <span className="text-paper/45">· {principal.name}</span>}
+          </div>
+
+          <div className="flex items-center gap-3 text-[13px] text-paper/70">
+            <span className="rounded-full bg-ink-2 px-3 py-1 text-[12px]">{onlineCount} online now</span>
+            <span>
+              Signed in as <span className="font-semibold text-paper">{me.name}</span>
+            </span>
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="rounded-full border border-paper/35 px-3 py-1 text-[12.5px] transition-colors hover:border-brass-light hover:text-brass-light"
+            >
+              Sign out
+            </button>
+          </div>
+        </header>
+      );
+    }
+
+    // --- SIGN IN SCREEN ---
+    function SignInScreen({ staff, setStaff, onSignIn }) {
+      const [selectedId, setSelectedId] = useState("");
+      const [password, setPassword] = useState("");
+      const [errorMsg, setErrorMsg] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [isResetMode, setIsResetMode] = useState(false);
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setErrorMsg("");
+        setTimeout(() => {
+          const res = onSignIn(selectedId, password);
+          if (!res.ok) setErrorMsg(res.error);
+          setLoading(false);
+        }, 300);
+      };
+
+      return (
+        <main className="flex min-h-screen items-center justify-center px-4 py-10 bg-paper-2">
+          <div className="flex w-full max-w-4xl flex-col overflow-hidden rounded-md shadow-plate md:flex-row bg-white border border-border">
+            {/* Left Hero Panel */}
+            <section className="relative flex min-w-[280px] flex-1 flex-col justify-between bg-ink p-7 text-paper md:p-10">
+              <span className="pointer-events-none absolute inset-2.5 border border-brass-light/25" aria-hidden="true" />
+              <div>
+                <div className="mb-7 flex h-14 w-14 items-center justify-center rounded-full border-2 border-brass-light serif text-xl font-bold text-brass-light">
+                  GC
+                </div>
+                <h1 className="mb-2 text-[26px] font-semibold leading-tight font-serif">
+                  Staff Connect<br />Campus Directory
+                </h1>
+                <p className="max-w-80 text-[13.5px] leading-relaxed text-paper/70">
+                  One shared live registry for the Principal, Deans, Registrar, HoDs, faculty, and support staff — featuring live cabin lamps, group messaging, notice board, and meeting slot requests.
+                </p>
+                <div className="mt-8 flex items-center gap-2.5 text-[12.5px] text-paper/70">
+                  <span className="lamp lamp-free" />
+                  Cabin availability lamps update instantly across campus
+                </div>
+              </div>
+              <p className="mt-8 text-[11.5px] text-paper/45">
+                Government College of Engineering — Internal Campus Portal
+              </p>
+            </section>
+
+            {/* Right Form Panel */}
+            <section className="min-w-[280px] flex-1 bg-paper-3 p-7 md:p-10 flex flex-col justify-center">
+              {!isResetMode ? (
+                <>
+                  <p className="text-xs text-text-soft uppercase tracking-wide font-semibold">Signed access by post</p>
+                  <h2 className="mb-6 mt-1 text-[19px] font-semibold">Sign in to the registry</h2>
+                  <form onSubmit={handleSubmit}>
+                    <div className="mb-4">
+                      <label htmlFor="login-id" className="mb-1.5 block text-xs text-text-soft">Post login ID</label>
+                      <select
+                        id="login-id"
+                        className="field-input"
+                        value={selectedId}
+                        onChange={e => setSelectedId(e.target.value)}
+                        required
+                      >
+                        <option value="">Select your post…</option>
+                        {staff.map(s => (
+                          <option key={s.id} value={s.id}>
+                            {s.role} — {s.name} ({s.id})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="mb-4">
+                      <label htmlFor="login-pass" className="mb-1.5 block text-xs text-text-soft">Password</label>
+                      <input
+                        id="login-pass"
+                        type="password"
+                        className="field-input"
+                        placeholder="Enter password (default: 123)"
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    {errorMsg && (
+                      <p className="mb-3 -mt-1 text-[13px] text-brick font-medium">{errorMsg}</p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full rounded-sm bg-ink py-3 text-[14.5px] font-semibold text-paper transition-colors hover:bg-ink-3 disabled:opacity-60"
+                    >
+                      {loading ? "Checking post credentials…" : "Enter directory"}
+                    </button>
+                  </form>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsResetMode(true)}
+                    className="mt-4 text-[12.5px] font-semibold text-ink underline underline-offset-2 text-left"
+                  >
+                    Change or reset a post password
+                  </button>
+                  <p className="mt-3 text-[12px] leading-relaxed text-text-soft">
+                    Default demo password for all posts is <code className="bg-paper-2 px-1 rounded font-mono">123</code>.
+                  </p>
+                </>
+              ) : (
+                <PasswordResetForm staff={staff} setStaff={setStaff} onDone={() => setIsResetMode(false)} />
+              )}
+            </section>
+          </div>
+        </main>
+      );
+    }
+
+    // --- PASSWORD RESET FORM ---
+    function PasswordResetForm({ staff, setStaff, onDone }) {
+      const [id, setId] = useState("");
+      const [curPass, setCurPass] = useState("");
+      const [newPass, setNewPass] = useState("");
+      const [status, setStatus] = useState(null);
+
+      const handleReset = (e) => {
+        e.preventDefault();
+        const found = staff.find(s => s.id === id);
+        if (!found) {
+          setStatus({ kind: "err", text: "Post ID not found." });
+          return;
+        }
+        if (found.password && found.password !== curPass) {
+          setStatus({ kind: "err", text: "Current password does not match." });
+          return;
+        }
+        setStaff(prev => prev.map(s => s.id === id ? { ...s, password: newPass } : s));
+        setStatus({ kind: "ok", text: "Password updated successfully. You may sign in now." });
+      };
+
+      return (
+        <div>
+          <p className="text-xs text-text-soft uppercase tracking-wide font-semibold">Password Reset</p>
+          <h2 className="mb-5 mt-1 text-[19px] font-semibold">Set a new password</h2>
+          <form onSubmit={handleReset}>
+            <div className="mb-3">
+              <label className="mb-1.5 block text-xs text-text-soft">Post login ID</label>
+              <input
+                className="field-input"
+                placeholder="e.g. principal@geca"
+                value={id}
+                onChange={e => setId(e.target.value)}
+                required
+              />
+            </div>
+            <div className="mb-3">
+              <label className="mb-1.5 block text-xs text-text-soft">Current password</label>
+              <input
+                type="password"
+                className="field-input"
+                value={curPass}
+                onChange={e => setCurPass(e.target.value)}
+                required
+              />
+            </div>
+            <div className="mb-4">
+              <label className="mb-1.5 block text-xs text-text-soft">New password</label>
+              <input
+                type="password"
+                className="field-input"
+                value={newPass}
+                onChange={e => setNewPass(e.target.value)}
+                required
+              />
+            </div>
+            {status && (
+              <p className={`mb-3 text-[13px] ${status.kind === "ok" ? "text-sage-dark font-medium" : "text-brick"}`}>
+                {status.text}
+              </p>
+            )}
+            <button
+              type="submit"
+              className="w-full rounded-sm bg-ink py-3 text-[14.5px] font-semibold text-paper transition-colors hover:bg-ink-3"
+            >
+              Update password
+            </button>
+          </form>
+          <button
+            type="button"
+            onClick={onDone}
+            className="mt-4 text-[12.5px] font-semibold text-ink underline underline-offset-2 block"
+          >
+            Back to sign in
+          </button>
+        </div>
+      );
+    }
+
+    // --- DIRECTORY SIDEBAR ---
+    function DirectorySidebar({ me, staff, cabin, messages, setCabin, activeId, onSelect, logActivity }) {
+      const [searchQuery, setSearchQuery] = useState("");
+      const meCabin = cabin[me.id] || { status: "out", note: "", back_at: "" };
+
+      const [statusNote, setStatusNote] = useState(meCabin.note || "");
+      const [backAt, setBackAt] = useState(meCabin.back_at || "");
+
+      const handleUpdateCabin = (newStatus) => {
+        const updated = {
+          status: newStatus,
+          note: statusNote,
+          back_at: backAt
+        };
+        setCabin(prev => ({ ...prev, [me.id]: updated }));
+        logActivity(me.id, "updated cabin status", `${STATUS_LABELS[newStatus]}${statusNote ? ` — ${statusNote}` : ""}`);
+      };
+
+      const getUnreadCount = (senderId) => {
+        return messages.filter(m => m.recipient === me.id && m.sender === senderId && !m.read_at).length;
+      };
+
+      const groupUnread = messages.filter(m => m.recipient === DEANS_HODS_GROUP_ID && m.sender !== me.id && !m.read_at).length;
+
+      const q = searchQuery.toLowerCase().trim();
+      const filterStaff = (s) =>
+        !q ||
+        s.name.toLowerCase().includes(q) ||
+        s.role.toLowerCase().includes(q) ||
+        s.dept.toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q);
+
+      return (
+        <aside className="w-full shrink-0 overflow-y-auto border-r border-border bg-paper-2 md:w-[310px] h-full flex flex-col">
+          {/* Search Bar */}
+          <div className="p-3">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search name, post or dept…"
+              className="field-input text-[13px]"
+            />
+          </div>
+
+          {/* User Cabin Control Box */}
+          {me.cabin && (
+            <div className="m-3 rounded-md bg-ink p-3.5 text-paper shadow-sm">
+              <p className="mb-2.5 text-[11.5px] leading-snug text-paper/70">
+                Your cabin lamp — updates live across campus directory.
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {["free", "busy", "out"].map(st => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => handleUpdateCabin(st)}
+                    className={`flex items-center gap-2 rounded-sm border px-2.5 py-1.5 text-left text-[12.5px] transition-colors ${
+                      meCabin.status === st
+                        ? "border-brass-light bg-brass-light/15 font-semibold text-white"
+                        : "border-paper/20 text-paper/80 hover:border-brass-light"
+                    }`}
+                  >
+                    <span className={getLampClass(st)} />
+                    {st === "free" && "In cabin — free to meet"}
+                    {st === "busy" && "In cabin — busy"}
+                    {st === "out" && "Not in cabin"}
+                  </button>
+                ))}
+              </div>
+
+              <input
+                value={statusNote}
+                onChange={e => setStatusNote(e.target.value)}
+                onBlur={() => handleUpdateCabin(meCabin.status)}
+                placeholder="Status note (e.g. In exam duty)"
+                className="mt-2.5 w-full rounded-sm border border-paper/20 bg-ink-2 px-2.5 py-1.5 text-[12px] text-paper placeholder:text-paper/40 outline-none"
+              />
+              <input
+                value={backAt}
+                onChange={e => setBackAt(e.target.value)}
+                onBlur={() => handleUpdateCabin(meCabin.status)}
+                placeholder="Back at (e.g. 4:30 PM)"
+                className="mt-1.5 w-full rounded-sm border border-paper/20 bg-ink-2 px-2.5 py-1.5 text-[12px] text-paper placeholder:text-paper/40 outline-none"
+              />
+            </div>
+          )}
+
+          {/* Standing Group Thread */}
+          {me.group_member && (
+            <div>
+              <SectionHeader title="Group Thread" />
+              <button
+                type="button"
+                onClick={() => onSelect(DEANS_HODS_GROUP_ID)}
+                className={`flex w-full items-center gap-2.5 border-l-[3px] px-4 py-2.5 text-left transition-colors ${
+                  activeId === DEANS_HODS_GROUP_ID
+                    ? "border-brass bg-paper-3 font-semibold"
+                    : "border-transparent hover:bg-paper-3/50"
+                }`}
+              >
+                <span className={`flex h-9 w-9 items-center justify-center rounded-full serif text-[12.5px] font-semibold ${getGroupBadgeBg("group")}`}>
+                  DH
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13.5px] font-semibold leading-tight">{GROUP_TITLE}</span>
+                  <span className="block text-[11px] text-text-soft">Principal · Deans · Registrar · HoDs</span>
+                </span>
+                {groupUnread > 0 && <UnreadBadge count={groupUnread} />}
+              </button>
+            </div>
+          )}
+
+          {/* Staff Directory Groups */}
+          {SECTIONS.map(sec => {
+            const items = staff.filter(s => s.grp === sec && s.id !== me.id && filterStaff(s));
+            if (!items.length) return null;
+            return (
+              <div key={sec}>
+                <SectionHeader title={GROUP_LABELS[sec]} />
+                {items.map(s => {
+                  const sCabin = cabin[s.id]?.status || "out";
+                  const unread = getUnreadCount(s.id);
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => onSelect(s.id)}
+                      className={`flex w-full items-center gap-2.5 border-l-[3px] px-4 py-2.5 text-left transition-all ${
+                        activeId === s.id
+                          ? "border-brass bg-brass/15"
+                          : "border-transparent hover:bg-brass/10"
+                      }`}
+                    >
+                      <span className="relative">
+                        <span className={`flex h-9 w-9 items-center justify-center rounded-full serif text-[12.5px] font-semibold ${getGroupBadgeBg(s.grp)}`}>
+                          {getInitials(s.name)}
+                        </span>
+                        <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-paper-2 bg-emerald-500" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5 text-[13.5px] font-semibold">
+                          <span className="truncate">{s.name}</span>
+                          {s.cabin && <span className={getLampClass(sCabin)} />}
+                        </span>
+                        <span className="block truncate text-[11px] text-text-soft">{s.role}</span>
+                      </span>
+                      {unread > 0 && <UnreadBadge count={unread} />}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+          <div className="h-6" />
+        </aside>
+      );
+    }
+
+    function SectionHeader({ title }) {
+      return (
+        <p className="flex items-center gap-2 px-4 pb-1.5 pt-4 text-[11.5px] font-semibold uppercase tracking-wider text-text-soft">
+          <span>{title}</span>
+          <span className="h-px flex-1 bg-border" />
+        </p>
+      );
+    }
+
+    function UnreadBadge({ count }) {
+      return (
+        <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brick px-1.5 text-[10.5px] font-bold text-white">
+          {count}
+        </span>
+      );
+    }
+
+    // --- MESSAGES VIEW ---
+    function MessagesView({ me, staff, cabin, messages, setMessages, activeId }) {
+      const [inputBody, setInputBody] = useState("");
+      const [isUrgent, setIsUrgent] = useState(false);
+      const [filterTerm, setFilterTerm] = useState("");
+      const scrollRef = useRef(null);
+
+      const isGroup = activeId === DEANS_HODS_GROUP_ID;
+      const targetUser = staff.find(s => s.id === activeId);
+
+      const threadMessages = useMemo(() => {
+        if (!activeId) return [];
+        let filtered = isGroup
+          ? messages.filter(m => m.recipient === DEANS_HODS_GROUP_ID)
+          : messages.filter(
+              m => (m.sender === me.id && m.recipient === activeId) || (m.sender === activeId && m.recipient === me.id)
+            );
+        if (filterTerm.trim()) {
+          const ft = filterTerm.toLowerCase().trim();
+          filtered = filtered.filter(m => m.body.toLowerCase().includes(ft));
+        }
+        return filtered;
+      }, [messages, activeId, isGroup, me.id, filterTerm]);
+
+      // Mark messages read
+      useEffect(() => {
+        if (!activeId) return;
+        const unreadIds = messages
+          .filter(m => !m.read_at && m.sender !== me.id && (isGroup ? m.recipient === DEANS_HODS_GROUP_ID : m.sender === activeId && m.recipient === me.id))
+          .map(m => m.id);
+
+        if (unreadIds.length > 0) {
+          setMessages(prev =>
+            prev.map(m => (unreadIds.includes(m.id) ? { ...m, read_at: new Date().toISOString() } : m))
+          );
+        }
+      }, [activeId, isGroup, me.id]);
+
+      useEffect(() => {
+        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+      }, [threadMessages.length, activeId]);
+
+      const handleSendMessage = () => {
+        const body = inputBody.trim();
+        if (!body || !activeId) return;
+        const newMsg = {
+          id: "m_" + Date.now(),
+          sender: me.id,
+          recipient: activeId,
+          body,
+          urgent: isUrgent,
+          created_at: new Date().toISOString(),
+          read_at: null
+        };
+        setMessages(prev => [...prev, newMsg]);
+        setInputBody("");
+        setIsUrgent(false);
+        playChimeNotification();
+      };
+
+      if (!activeId) {
+        return (
+          <div className="flex flex-1 items-center justify-center p-10 text-center text-sm text-text-soft">
+            Select a post from the directory to open its chat thread.
+          </div>
+        );
+      }
+
+      const targetCabin = targetUser ? cabin[targetUser.id] : null;
+
+      return (
+        <div className="flex min-h-0 flex-1 flex-col h-full bg-paper">
+          {/* Thread Header */}
+          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-paper-3 px-6 py-3.5 shadow-sm">
+            <span className={`flex h-10 w-10 items-center justify-center rounded-full serif text-sm font-semibold ${getGroupBadgeBg(isGroup ? "group" : targetUser?.grp)}`}>
+              {isGroup ? "DH" : getInitials(targetUser?.name)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-base font-semibold">{isGroup ? GROUP_TITLE : targetUser?.name}</p>
+              <p className="flex items-center gap-2 text-xs text-text-soft">
+                {isGroup ? (
+                  "Standing Thread · Principal, Deans, Registrar & HoDs"
+                ) : (
+                  <>
+                    {targetUser?.role} · {targetUser?.dept}
+                    {targetUser?.cabin && (
+                      <span className="flex items-center gap-1 ml-1">
+                        <span className={getLampClass(targetCabin?.status || "out")} />
+                        {STATUS_LABELS[targetCabin?.status || "out"]}
+                        {targetCabin?.note ? ` — ${targetCabin.note}` : ""}
+                        {targetCabin?.back_at ? ` · back at ${targetCabin.back_at}` : ""}
+                      </span>
+                    )}
+                  </>
+                )}
+              </p>
+            </div>
+            <input
+              type="search"
+              value={filterTerm}
+              onChange={e => setFilterTerm(e.target.value)}
+              placeholder="Search in thread…"
+              className="field-input w-44 text-[12.5px]"
+            />
+          </div>
+
+          {/* Messages Feed */}
+          <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-6">
+            {threadMessages.length === 0 ? (
+              <p className="m-auto max-w-xs text-center text-sm text-text-soft">
+                No messages here yet. Send the first message.
+              </p>
+            ) : (
+              threadMessages.map((msg, idx) => {
+                const isMine = msg.sender === me.id;
+                const senderStaff = staff.find(s => s.id === msg.sender);
+                const prevMsg = threadMessages[idx - 1];
+                const showDate = !prevMsg || formatDateLabel(msg.created_at) !== formatDateLabel(prevMsg.created_at);
+
+                return (
+                  <React.Fragment key={msg.id}>
+                    {showDate && (
+                      <p className="my-2 self-center rounded-full bg-paper-2 px-3 py-1 text-[11px] font-medium text-text-soft border border-border">
+                        {formatDateLabel(msg.created_at)}
+                      </p>
+                    )}
+                    <div
+                      className={`max-w-[70%] animate-rise rounded-md px-3.5 py-2.5 text-sm leading-snug shadow-sm ${
+                        isMine
+                          ? "self-end rounded-br-sm bg-sage-dark text-paper-3"
+                          : "self-start rounded-bl-sm border border-border bg-white text-ink"
+                      } ${msg.urgent ? "border-l-4 border-l-brick" : ""}`}
+                    >
+                      {isGroup && !isMine && (
+                        <span className="mb-1 block text-[11px] font-semibold text-sage-dark">
+                          {senderStaff?.name} · {senderStaff?.role}
+                        </span>
+                      )}
+                      {msg.urgent && (
+                        <span className="mb-1.5 inline-block rounded-full bg-brick px-2 py-0.5 text-[10px] font-bold tracking-wide text-white uppercase">
+                          URGENT
+                        </span>
+                      )}
+                      <p className="whitespace-pre-wrap">{msg.body}</p>
+                      <p className={`mt-1.5 text-[10.5px] ${isMine ? "text-paper-3/75" : "text-text-soft"}`}>
+                        {formatTime(msg.created_at)}
+                        {isMine && (msg.read_at ? " · read" : " · sent")}
+                      </p>
+                    </div>
+                  </React.Fragment>
+                );
+              })
+            )}
+          </div>
+
+          {/* Compose Footer */}
+          <div className="flex items-end gap-2.5 border-t border-border bg-paper-3 px-5 py-3.5">
+            <textarea
+              value={inputBody}
+              onChange={e => setInputBody(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              placeholder="Write a message to thread… (Press Enter to send)"
+              className="field-input max-h-28 min-h-11 flex-1 resize-none"
+            />
+            <label className="flex cursor-pointer select-none items-center gap-1.5 whitespace-nowrap pb-3 text-xs text-text-soft">
+              <input
+                type="checkbox"
+                checked={isUrgent}
+                onChange={e => setIsUrgent(e.target.checked)}
+                className="accent-brick"
+              />
+              Mark urgent
+            </label>
+            <button
+              type="button"
+              onClick={handleSendMessage}
+              className="rounded-md bg-sage-dark px-5 py-2.5 text-[13.5px] font-semibold text-paper-3 transition-colors hover:bg-sage shadow-sm"
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // --- NOTICES VIEW ---
+    function NoticesView({ me, staff, notices, setNotices, logActivity }) {
+      const [title, setTitle] = useState("");
+      const [body, setBody] = useState("");
+      const [category, setCategory] = useState("General");
+      const [isUrgent, setIsUrgent] = useState(false);
+      const [activeCategory, setActiveCategory] = useState("All");
+
+      const handlePublish = () => {
+        if (!title.trim() || !body.trim()) return;
+        const newNotice = {
+          id: "n_" + Date.now(),
+          author: me.id,
+          title: title.trim(),
+          body: body.trim(),
+          category,
+          urgent: isUrgent,
+          pinned: false,
+          created_at: new Date().toISOString()
+        };
+        setNotices(prev => [newNotice, ...prev]);
+        logActivity(me.id, "posted a notice", title.trim());
+        setTitle("");
+        setBody("");
+        setIsUrgent(false);
+      };
+
+      const togglePin = (n) => {
+        setNotices(prev => prev.map(item => item.id === n.id ? { ...item, pinned: !item.pinned } : item));
+      };
+
+      const handleDelete = (id) => {
+        setNotices(prev => prev.filter(item => item.id !== id));
+      };
+
+      const filteredNotices = notices
+        .filter(n => activeCategory === "All" || n.category === activeCategory)
+        .sort((a, b) => Number(b.pinned) - Number(a.pinned));
+
+      return (
+        <div className="min-h-0 flex-1 overflow-y-auto p-6 bg-paper">
+          <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1fr_320px]">
+            {/* Notices List */}
+            <section>
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                {["All", ...NOTICE_CATEGORIES].map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => setActiveCategory(cat)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                      activeCategory === cat
+                        ? "bg-ink text-paper"
+                        : "border border-border bg-white text-text-soft hover:border-brass"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-col gap-3.5">
+                {filteredNotices.length === 0 ? (
+                  <p className="text-sm text-text-soft">No notices published in this category yet.</p>
+                ) : (
+                  filteredNotices.map(n => {
+                    const author = staff.find(s => s.id === n.author);
+                    return (
+                      <article
+                        key={n.id}
+                        className={`animate-rise rounded-md border bg-white p-4 shadow-sm ${
+                          n.urgent ? "border-l-4 border-l-brick border-border" : "border-border"
+                        }`}
+                      >
+                        <div className="mb-2 flex items-start gap-3">
+                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full serif text-xs font-semibold ${getGroupBadgeBg(author?.grp)}`}>
+                            {getInitials(author?.name)}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <h3 className="text-base font-semibold leading-snug">
+                              {n.pinned && <span className="mr-1 text-brass font-bold">★ [PINNED]</span>}
+                              {n.title}
+                            </h3>
+                            <p className="text-[11.5px] text-text-soft">
+                              {author?.name} · {author?.role} · {formatTimeAgo(n.created_at)}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-paper-2 px-2.5 py-1 text-[10.5px] font-semibold text-text-soft border border-border">
+                            {n.category}
+                          </span>
+                        </div>
+                        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{n.body}</p>
+                        <div className="mt-3 flex gap-3 text-[11.5px]">
+                          <button
+                            type="button"
+                            onClick={() => togglePin(n)}
+                            className="font-semibold text-sage-dark underline"
+                          >
+                            {n.pinned ? "Unpin notice" : "Pin to top"}
+                          </button>
+                          {n.author === me.id && (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(n.id)}
+                              className="font-semibold text-brick underline"
+                            >
+                              Withdraw notice
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })
+                )}
+              </div>
+            </section>
+
+            {/* Post Notice Sidebar */}
+            <aside className="h-fit rounded-md border border-border bg-paper-3 p-4 shadow-sm">
+              <h3 className="mb-3 text-base font-semibold">Post a campus notice</h3>
+              <input
+                value={title}
+                onChange={e => setTitle(e.target.value)}
+                placeholder="Notice heading"
+                className="field-input mb-2 text-[13px]"
+              />
+              <textarea
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                placeholder="Details for all staff members…"
+                className="field-input mb-2 min-h-24 resize-none text-[13px]"
+              />
+              <select
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+                className="field-input mb-2 text-[13px]"
+              >
+                {NOTICE_CATEGORIES.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <label className="mb-3 flex cursor-pointer items-center gap-2 text-xs text-text-soft">
+                <input
+                  type="checkbox"
+                  checked={isUrgent}
+                  onChange={e => setIsUrgent(e.target.checked)}
+                  className="accent-brick"
+                />
+                Flag as urgent
+              </label>
+              <button
+                type="button"
+                onClick={handlePublish}
+                className="w-full rounded-sm bg-ink py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-3 shadow-sm"
+              >
+                Publish to board
+              </button>
+            </aside>
+          </div>
+        </div>
+      );
+    }
+
+    // --- APPOINTMENTS VIEW ---
+    function AppointmentsView({ me, staff, cabin, appointments, setAppointments, logActivity }) {
+      const [targetId, setTargetId] = useState("");
+      const [slot, setSlot] = useState("");
+      const [purpose, setPurpose] = useState("");
+
+      const handleSendRequest = () => {
+        if (!targetId || !slot.trim() || !purpose.trim()) return;
+        const newAppt = {
+          id: "a_" + Date.now(),
+          requester: me.id,
+          target: targetId,
+          purpose: purpose.trim(),
+          slot: slot.trim(),
+          status: "pending",
+          created_at: new Date().toISOString()
+        };
+        setAppointments(prev => [newAppt, ...prev]);
+        logActivity(me.id, "requested a meeting", purpose.trim());
+        setSlot("");
+        setPurpose("");
+      };
+
+      const updateStatus = (id, newStatus, purp) => {
+        setAppointments(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
+        logActivity(me.id, `${newStatus} a meeting request`, purp);
+      };
+
+      const incoming = appointments.filter(a => a.target === me.id);
+      const outgoing = appointments.filter(a => a.requester === me.id);
+
+      const getName = (id) => staff.find(s => s.id === id)?.name || id;
+      const getRole = (id) => staff.find(s => s.id === id)?.role || "";
+
+      return (
+        <div className="min-h-0 flex-1 overflow-y-auto p-6 bg-paper">
+          <div className="mx-auto grid max-w-5xl gap-6 lg:grid-cols-[1fr_320px]">
+            {/* Columns */}
+            <div className="grid gap-6 md:grid-cols-2">
+              <section>
+                <h3 className="mb-3 text-base font-semibold">Requests to you</h3>
+                <div className="flex flex-col gap-3">
+                  {incoming.length === 0 && (
+                    <p className="text-sm text-text-soft">No pending requests sent to you.</p>
+                  )}
+                  {incoming.map(a => (
+                    <ApptCard
+                      key={a.id}
+                      item={a}
+                      name={getName(a.requester)}
+                      role={getRole(a.requester)}
+                      isOutgoing={false}
+                      onStatus={updateStatus}
+                    />
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="mb-3 text-base font-semibold">Your sent requests</h3>
+                <div className="flex flex-col gap-3">
+                  {outgoing.length === 0 && (
+                    <p className="text-sm text-text-soft">You haven’t requested any meeting slots.</p>
+                  )}
+                  {outgoing.map(a => (
+                    <ApptCard
+                      key={a.id}
+                      item={a}
+                      name={getName(a.target)}
+                      role={getRole(a.target)}
+                      isOutgoing={true}
+                      onStatus={updateStatus}
+                    />
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            {/* Request Sidebar */}
+            <aside className="h-fit rounded-md border border-border bg-paper-3 p-4 shadow-sm">
+              <h3 className="mb-3 text-base font-semibold">Request a meeting slot</h3>
+              <select
+                value={targetId}
+                onChange={e => setTargetId(e.target.value)}
+                className="field-input mb-2 text-[13px]"
+              >
+                <option value="">Select a staff post…</option>
+                {staff.filter(s => s.id !== me.id).map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} — {s.role}
+                  </option>
+                ))}
+              </select>
+
+              {targetId && (
+                <p className="mb-2 flex items-center gap-2 text-[11.5px] text-text-soft">
+                  <span className={getLampClass(cabin[targetId]?.status || "out")} />
+                  Cabin right now: <span className="font-semibold text-ink">{STATUS_LABELS[cabin[targetId]?.status || "out"]}</span>
+                </p>
+              )}
+
+              <input
+                value={slot}
+                onChange={e => setSlot(e.target.value)}
+                placeholder="Preferred slot (e.g. Tomorrow 11:30 AM)"
+                className="field-input mb-2 text-[13px]"
+              />
+              <textarea
+                value={purpose}
+                onChange={e => setPurpose(e.target.value)}
+                placeholder="Purpose of the meeting…"
+                className="field-input mb-3 min-h-20 resize-none text-[13px]"
+              />
+              <button
+                type="button"
+                onClick={handleSendRequest}
+                className="w-full rounded-sm bg-ink py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-ink-3 shadow-sm"
+              >
+                Send slot request
+              </button>
+            </aside>
+          </div>
+        </div>
+      );
+    }
+
+    function ApptCard({ item, name, role, isOutgoing, onStatus }) {
+      const statusBadges = {
+        pending: "bg-amber-100 text-amber-900 border border-amber-300",
+        accepted: "bg-emerald-100 text-emerald-900 border border-emerald-300",
+        declined: "bg-rose-100 text-rose-900 border border-rose-300",
+        cancelled: "bg-gray-100 text-gray-700 border border-gray-300"
+      };
+
+      return (
+        <article className="animate-rise rounded-md border border-border bg-white p-3.5 shadow-sm">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold">{isOutgoing ? `To ${name}` : `From ${name}`}</p>
+            <span className={`rounded-full px-2.5 py-0.5 text-[10.5px] font-bold uppercase tracking-wide ${statusBadges[item.status]}`}>
+              {item.status}
+            </span>
+          </div>
+          <p className="text-[11.5px] text-text-soft">{role} · requested {formatTimeAgo(item.created_at)}</p>
+          <p className="mt-2 text-sm text-ink">{item.purpose}</p>
+          <p className="mt-1 text-[12.5px] font-semibold text-sage-dark">Slot: {item.slot}</p>
+
+          {!isOutgoing && item.status === "pending" && (
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => onStatus(item.id, "accepted", item.purpose)}
+                className="rounded-sm bg-sage-dark px-3 py-1.5 text-xs font-semibold text-paper-3 hover:bg-sage"
+              >
+                Accept
+              </button>
+              <button
+                type="button"
+                onClick={() => onStatus(item.id, "declined", item.purpose)}
+                className="rounded-sm border border-brick px-3 py-1.5 text-xs font-semibold text-brick hover:bg-rose-50"
+              >
+                Decline
+              </button>
+            </div>
+          )}
+
+          {isOutgoing && item.status === "pending" && (
+            <button
+              type="button"
+              onClick={() => onStatus(item.id, "cancelled", item.purpose)}
+              className="mt-3 text-[11.5px] font-semibold text-brick underline"
+            >
+              Withdraw request
+            </button>
+          )}
+        </article>
+      );
+    }
+
+    // --- OVERVIEW VIEW ---
+    function OverviewView({ staff, cabin, messages, appointments, activity, onSelect }) {
+      const freeCount = staff.filter(s => cabin[s.id]?.status === "free").length;
+      const busyCount = staff.filter(s => cabin[s.id]?.status === "busy").length;
+      const pendingCount = appointments.filter(a => a.status === "pending").length;
+      const urgentCount = messages.filter(m => m.urgent).length;
+
+      const stats = [
+        { label: "Free in cabin", val: freeCount },
+        { label: "In cabin, busy", val: busyCount },
+        { label: "Online campus users", val: Math.min(staff.length, 4) },
+        { label: "Pending slot requests", val: pendingCount },
+        { label: "Urgent messages logged", val: urgentCount },
+        { label: "Staff posts registered", val: staff.length }
+      ];
+
+      const getActorName = (id) => staff.find(s => s.id === id)?.name || id;
+
+      return (
+        <div className="min-h-0 flex-1 overflow-y-auto p-6 bg-paper">
+          <div className="mx-auto max-w-5xl">
+            {/* Stats Grid */}
+            <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+              {stats.map(s => (
+                <div key={s.label} className="rounded-md border border-border bg-white p-3.5 shadow-sm">
+                  <p className="serif text-3xl font-bold text-ink">{s.val}</p>
+                  <p className="mt-1 text-[11.5px] leading-snug text-text-soft">{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+              {/* Full Cabin Board */}
+              <section>
+                <h3 className="mb-3 text-base font-semibold">Campus Cabin Board</h3>
+                {SECTIONS.map(sec => {
+                  const items = staff.filter(s => s.grp === sec);
+                  if (!items.length) return null;
+                  return (
+                    <div key={sec} className="mb-5">
+                      <p className="mb-2 flex items-center gap-2 text-[11.5px] font-semibold text-text-soft uppercase tracking-wider">
+                        <span>{GROUP_LABELS[sec]}</span>
+                        <span className="h-px flex-1 bg-border" />
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {items.map(s => {
+                          const sCabin = cabin[s.id];
+                          const status = sCabin?.status || "out";
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => onSelect(s.id)}
+                              className="flex items-center gap-2.5 rounded-md border border-border bg-white p-2.5 text-left transition-colors hover:border-brass shadow-sm"
+                            >
+                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full serif text-xs font-semibold ${getGroupBadgeBg(s.grp)}`}>
+                                {getInitials(s.name)}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[13px] font-semibold">{s.name}</span>
+                                <span className="block truncate text-[11px] text-text-soft">
+                                  {s.role}
+                                  {sCabin?.note ? ` · ${sCabin.note}` : ""}
+                                  {sCabin?.back_at ? ` · back ${sCabin.back_at}` : ""}
+                                </span>
+                              </span>
+                              <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-text-soft">
+                                <span className={getLampClass(status)} />
+                                {STATUS_LABELS[status]}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </section>
+
+              {/* Activity Log */}
+              <aside>
+                <h3 className="mb-3 text-base font-semibold">Recent campus activity</h3>
+                <div className="flex flex-col gap-2">
+                  {activity.length === 0 ? (
+                    <p className="text-sm text-text-soft">No activity logged yet.</p>
+                  ) : (
+                    activity.slice(0, 15).map(act => (
+                      <div key={act.id} className="rounded-md border border-border bg-white p-2.5 shadow-sm text-xs">
+                        <p className="text-[12.5px]">
+                          <span className="font-semibold text-ink">{getActorName(act.actor)}</span>{" "}
+                          <span className="text-text-soft">{act.action}</span>
+                        </p>
+                        {act.detail && <p className="text-[11.5px] font-medium text-sage-dark">{act.detail}</p>}
+                        <p className="mt-0.5 text-[10.5px] text-text-soft">{formatTimeAgo(act.created_at)}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // --- ADMIN ROLES VIEW ---
+    function AdminRolesView({ staff, setStaff, logActivity }) {
+      const [editingRole, setEditingRole] = useState(null);
+      const [isNew, setIsNew] = useState(true);
+
+      const emptyRole = {
+        id: "",
+        name: "",
+        role: "",
+        dept: "",
+        grp: "department",
+        cabin: true,
+        group_member: false,
+        is_admin: false,
+        password: "123"
+      };
+
+      const handleSave = (e) => {
+        e.preventDefault();
+        if (!editingRole.id || !editingRole.name || !editingRole.role) return;
+
+        if (isNew) {
+          if (staff.some(s => s.id === editingRole.id)) {
+            alert("Login ID already exists!");
+            return;
+          }
+          setStaff(prev => [...prev, editingRole]);
+          logActivity("admin", "created role", editingRole.id);
+        } else {
+          setStaff(prev => prev.map(s => s.id === editingRole.id ? editingRole : s));
+          logActivity("admin", "updated role", editingRole.id);
+        }
+        setEditingRole(null);
+      };
+
+      const handleDelete = (id) => {
+        if (window.confirm(`Delete role ${id}? The post will no longer be able to sign in.`)) {
+          setStaff(prev => prev.filter(s => s.id !== id));
+          logActivity("admin", "deleted role", id);
+        }
+      };
+
+      return (
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6 bg-paper">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[17px] font-semibold">Roles & Access Management</h2>
+              <p className="text-[12.5px] text-text-soft">
+                Add, edit, or remove faculty & staff posts and configure credentials live.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingRole({ ...emptyRole });
+                setIsNew(true);
+              }}
+              className="rounded-sm bg-ink px-4 py-2 text-[13px] font-semibold text-paper hover:bg-ink-3 shadow-sm"
+            >
+              Add a new role
+            </button>
+          </div>
+
+          {editingRole && (
+            <form onSubmit={handleSave} className="mb-6 grid gap-3 rounded-md border border-border bg-paper-2 p-4 md:grid-cols-2 shadow-sm">
+              <FormGroup label="Login ID (e.g. hodit@geca)">
+                <input
+                  className="field-input"
+                  value={editingRole.id}
+                  disabled={!isNew}
+                  onChange={e => setEditingRole({ ...editingRole, id: e.target.value })}
+                  required
+                />
+              </FormGroup>
+
+              <FormGroup label="Full Name">
+                <input
+                  className="field-input"
+                  value={editingRole.name}
+                  onChange={e => setEditingRole({ ...editingRole, name: e.target.value })}
+                  required
+                />
+              </FormGroup>
+
+              <FormGroup label="Post Title">
+                <input
+                  className="field-input"
+                  value={editingRole.role}
+                  onChange={e => setEditingRole({ ...editingRole, role: e.target.value })}
+                  required
+                />
+              </FormGroup>
+
+              <FormGroup label="Department / Office">
+                <input
+                  className="field-input"
+                  value={editingRole.dept}
+                  onChange={e => setEditingRole({ ...editingRole, dept: e.target.value })}
+                />
+              </FormGroup>
+
+              <FormGroup label="Section Group">
+                <select
+                  className="field-input"
+                  value={editingRole.grp}
+                  onChange={e => setEditingRole({ ...editingRole, grp: e.target.value })}
+                >
+                  {SECTIONS.map(s => (
+                    <option key={s} value={s}>{GROUP_LABELS[s]}</option>
+                  ))}
+                </select>
+              </FormGroup>
+
+              <FormGroup label="Password">
+                <input
+                  type="password"
+                  className="field-input"
+                  value={editingRole.password || ""}
+                  onChange={e => setEditingRole({ ...editingRole, password: e.target.value })}
+                  placeholder="Set login password"
+                />
+              </FormGroup>
+
+              <div className="flex flex-wrap items-center gap-4 md:col-span-2 pt-2">
+                <FormCheckbox
+                  label="Has a physical cabin"
+                  checked={editingRole.cabin}
+                  onChange={v => setEditingRole({ ...editingRole, cabin: v })}
+                />
+                <FormCheckbox
+                  label="Member of Deans & HoDs group chat"
+                  checked={editingRole.group_member}
+                  onChange={v => setEditingRole({ ...editingRole, group_member: v })}
+                />
+                <FormCheckbox
+                  label="Can manage roles (Admin privileges)"
+                  checked={editingRole.is_admin}
+                  onChange={v => setEditingRole({ ...editingRole, is_admin: v })}
+                />
+              </div>
+
+              <div className="flex gap-2 md:col-span-2 mt-2">
+                <button
+                  type="submit"
+                  className="rounded-sm bg-ink px-4 py-2 text-[13px] font-semibold text-paper hover:bg-ink-3 shadow-sm"
+                >
+                  Save post role
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingRole(null)}
+                  className="rounded-sm border border-border px-4 py-2 text-[13px] font-semibold text-ink"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="overflow-x-auto rounded-md border border-border bg-white shadow-sm">
+            <table className="w-full min-w-[640px] text-left text-[13px]">
+              <thead className="bg-paper-2 text-[12px] uppercase tracking-wide text-text-soft border-b border-border">
+                <tr>
+                  <th className="px-3.5 py-2.5">Login ID</th>
+                  <th className="px-3.5 py-2.5">Name</th>
+                  <th className="px-3.5 py-2.5">Post Title</th>
+                  <th className="px-3.5 py-2.5">Section</th>
+                  <th className="px-3.5 py-2.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staff.map(s => (
+                  <tr key={s.id} className="border-t border-border hover:bg-paper-2/50 transition-colors">
+                    <td className="px-3.5 py-2.5 font-medium text-ink">
+                      {s.id}
+                      {s.is_admin && (
+                        <span className="ml-2 rounded-full bg-brass/20 px-2 py-0.5 text-[10px] font-bold text-brass uppercase">
+                          Admin
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3.5 py-2.5">{s.name}</td>
+                    <td className="px-3.5 py-2.5">{s.role}</td>
+                    <td className="px-3.5 py-2.5 text-text-soft">{GROUP_LABELS[s.grp] || s.grp}</td>
+                    <td className="whitespace-nowrap px-3.5 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingRole({ ...s });
+                          setIsNew(false);
+                        }}
+                        className="mr-3 font-semibold text-ink underline underline-offset-2"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(s.id)}
+                        className="font-semibold text-brick underline underline-offset-2"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    function FormGroup({ label, children }) {
+      return (
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-text-soft">{label}</span>
+          {children}
+        </label>
+      );
+    }
+
+    function FormCheckbox({ label, checked, onChange }) {
+      return (
+        <label className="flex items-center gap-2 text-[13px] cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={e => onChange(e.target.checked)}
+            className="accent-brass"
+          />
+          {label}
+        </label>
+      );
+    }
+
+    // Render App
+    const rootElement = document.getElementById("root");
+    ReactDOM.createRoot(rootElement).render(<App />);
+  </script>
+</body>
+</html>
