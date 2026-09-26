@@ -106,7 +106,7 @@
   <script>
     // Pure React Element Helper (No Babel required = 100% GitHub Pages compatible!)
     const h = (type, props, ...children) => React.createElement(type, props, ...children.flat(Infinity).filter(c => c !== null && c !== undefined && c !== false));
-    const { useState, useEffect, useRef, useMemo } = React;
+    const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
     // --- INITIAL DATA & CONSTANTS ---
     const DEANS_HODS_GROUP_ID = "grp-deanshods";
@@ -256,6 +256,63 @@
       const [activeThreadId, setActiveThreadId] = useState(DEANS_HODS_GROUP_ID);
       const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
+      const channelRef = useRef(null);
+
+      // --- MULTI-TAB REAL-TIME SYNC ---
+      useEffect(() => {
+        let bc = null;
+        if (typeof window !== "undefined" && window.BroadcastChannel) {
+          bc = new BroadcastChannel("staff_connect_sync");
+          channelRef.current = bc;
+          bc.onmessage = (event) => {
+            const { type, payload } = event.data || {};
+            if (type === "SYNC_ALL") {
+              if (payload.staff) setStaff(payload.staff);
+              if (payload.cabin) setCabin(payload.cabin);
+              if (payload.messages) setMessages(payload.messages);
+              if (payload.notices) setNotices(payload.notices);
+              if (payload.appointments) setAppointments(payload.appointments);
+              if (payload.activity) setActivity(payload.activity);
+              if (payload.playChime) playChimeNotification();
+            }
+          };
+        }
+
+        const handleStorage = (e) => {
+          if (!e.key) return;
+          try {
+            if (e.key === "sc_staff" && e.newValue) setStaff(JSON.parse(e.newValue));
+            if (e.key === "sc_cabin" && e.newValue) setCabin(JSON.parse(e.newValue));
+            if (e.key === "sc_messages" && e.newValue) setMessages(JSON.parse(e.newValue));
+            if (e.key === "sc_notices" && e.newValue) setNotices(JSON.parse(e.newValue));
+            if (e.key === "sc_appointments" && e.newValue) setAppointments(JSON.parse(e.newValue));
+            if (e.key === "sc_activity" && e.newValue) setActivity(JSON.parse(e.newValue));
+          } catch(err) {}
+        };
+
+        window.addEventListener("storage", handleStorage);
+        return () => {
+          if (bc) bc.close();
+          window.removeEventListener("storage", handleStorage);
+        };
+      }, []);
+
+      const broadcastState = useCallback((updatedState, playChime = false) => {
+        const fullPayload = {
+          staff: updatedState.staff || staff,
+          cabin: updatedState.cabin || cabin,
+          messages: updatedState.messages || messages,
+          notices: updatedState.notices || notices,
+          appointments: updatedState.appointments || appointments,
+          activity: updatedState.activity || activity,
+          playChime
+        };
+        if (channelRef.current) {
+          channelRef.current.postMessage({ type: "SYNC_ALL", payload: fullPayload });
+        }
+      }, [staff, cabin, messages, notices, appointments, activity]);
+
+      // Save to localStorage
       useEffect(() => { try { localStorage.setItem("sc_staff", JSON.stringify(staff)); } catch(e){} }, [staff]);
       useEffect(() => { try { localStorage.setItem("sc_cabin", JSON.stringify(cabin)); } catch(e){} }, [cabin]);
       useEffect(() => { try { localStorage.setItem("sc_messages", JSON.stringify(messages)); } catch(e){} }, [messages]);
@@ -283,16 +340,18 @@
       };
 
       const logActivity = (actor, action, detail) => {
-        setActivity(prev => [
-          { id: "act_" + Date.now(), actor, action, detail: detail || null, created_at: new Date().toISOString() },
-          ...prev.slice(0, 39)
-        ]);
+        const newAct = { id: "act_" + Date.now(), actor, action, detail: detail || null, created_at: new Date().toISOString() };
+        setActivity(prev => {
+          const next = [newAct, ...prev.slice(0, 39)];
+          broadcastState({ activity: next });
+          return next;
+        });
       };
 
       const onlineCount = useMemo(() => Math.min(staff.length, 4), [staff.length]);
 
       if (!currentUser) {
-        return h(SignInScreen, { staff, setStaff, onSignIn: handleSignIn });
+        return h(SignInScreen, { staff, setStaff: (st) => { setStaff(st); broadcastState({ staff: st }); }, onSignIn: handleSignIn });
       }
 
       return h('div', { className: "flex min-h-screen flex-col bg-paper" },
@@ -332,18 +391,65 @@
         h('div', { className: "flex min-h-0 flex-1 flex-col md:flex-row overflow-hidden" },
           h('div', { className: `${showMobileSidebar ? "flex" : "hidden"} min-h-0 flex-col md:flex` },
             h(DirectorySidebar, {
-              me: currentUser, staff, cabin, messages, setCabin,
+              me: currentUser, staff, cabin, messages,
+              setCabin: (fn) => {
+                setCabin(prev => {
+                  const next = typeof fn === 'function' ? fn(prev) : fn;
+                  broadcastState({ cabin: next });
+                  return next;
+                });
+              },
               activeId: activeTab === "messages" ? activeThreadId : null,
               onSelect: id => { setActiveThreadId(id); setActiveTab("messages"); setShowMobileSidebar(false); },
               logActivity
             })
           ),
           h('main', { className: `${showMobileSidebar ? "hidden" : "flex"} min-h-0 flex-1 flex-col md:flex` },
-            activeTab === "messages" && h(MessagesView, { me: currentUser, staff, cabin, messages, setMessages, activeId: activeThreadId }),
-            activeTab === "notices" && h(NoticesView, { me: currentUser, staff, notices, setNotices, logActivity }),
-            activeTab === "appointments" && h(AppointmentsView, { me: currentUser, staff, cabin, appointments, setAppointments, logActivity }),
+            activeTab === "messages" && h(MessagesView, {
+              me: currentUser, staff, cabin, messages,
+              setMessages: (fn) => {
+                setMessages(prev => {
+                  const next = typeof fn === 'function' ? fn(prev) : fn;
+                  broadcastState({ messages: next }, true);
+                  return next;
+                });
+              },
+              activeId: activeThreadId
+            }),
+            activeTab === "notices" && h(NoticesView, {
+              me: currentUser, staff, notices,
+              setNotices: (fn) => {
+                setNotices(prev => {
+                  const next = typeof fn === 'function' ? fn(prev) : fn;
+                  broadcastState({ notices: next });
+                  return next;
+                });
+              },
+              logActivity
+            }),
+            activeTab === "appointments" && h(AppointmentsView, {
+              me: currentUser, staff, cabin, appointments,
+              setAppointments: (fn) => {
+                setAppointments(prev => {
+                  const next = typeof fn === 'function' ? fn(prev) : fn;
+                  broadcastState({ appointments: next });
+                  return next;
+                });
+              },
+              logActivity
+            }),
             activeTab === "overview" && h(OverviewView, { staff, cabin, messages, appointments, activity, onSelect: id => { setActiveThreadId(id); setActiveTab("messages"); } }),
-            activeTab === "admin" && currentUser.is_admin && h(AdminRolesView, { staff, setStaff, logActivity })
+            activeTab === "admin" && currentUser.is_admin && h(AdminRolesView, {
+              staff,
+              setStaff: (fn) => {
+                setStaff(prev => {
+                  const next = typeof fn === 'function' ? fn(prev) : fn;
+                  broadcastState({ staff: next });
+                  return next;
+                });
+              },
+              logActivity
+            })
           )
         )
       );
@@ -356,7 +462,7 @@
           h('div', { className: "flex h-9 w-9 items-center justify-center rounded-full border-2 border-brass-light serif text-[15px] font-bold text-brass-light" }, "GC"),
           h('div', null,
             h('p', { className: "text-lg font-semibold tracking-wide leading-none" }, "Staff Connect"),
-            h('p', { className: "text-[11px] text-paper/60 mt-0.5" }, "Government College of Engineering · Live Campus Board")
+            h('p', { className: "text-[11px] text-paper/60 mt-0.5" }, "Government College of Engineering · Live Multi-Tab Sync Board")
           )
         ),
         h('div', { className: "flex items-center gap-2.5 rounded-full border border-brass-light/35 bg-ink-2 px-4 py-1.5 text-[13.5px]" },
@@ -404,7 +510,7 @@
               h('h1', { className: "mb-2 text-[26px] font-semibold leading-tight font-serif" }, "Staff Connect", h('br'), "Campus Directory"),
               h('p', { className: "max-w-80 text-[13.5px] leading-relaxed text-paper/70" }, "One shared live registry for the Principal, Deans, Registrar, HoDs, faculty, and support staff — featuring live cabin lamps, group messaging, notice board, and meeting slot requests."),
               h('div', { className: "mt-8 flex items-center gap-2.5 text-[12.5px] text-paper/70" },
-                h('span', { className: "lamp lamp-free" }), "Cabin availability lamps update instantly across campus"
+                h('span', { className: "lamp lamp-free" }), "Cabin availability lamps update instantly across campus & multiple tabs"
               )
             ),
             h('p', { className: "mt-8 text-[11.5px] text-paper/45" }, "Government College of Engineering — Internal Campus Portal")
@@ -514,7 +620,7 @@
           h('input', { type: "search", value: searchQuery, onChange: e => setSearchQuery(e.target.value), placeholder: "Search name, post or dept…", className: "field-input text-[13px]" })
         ),
         me.cabin && h('div', { className: "m-3 rounded-md bg-ink p-3.5 text-paper shadow-sm" },
-          h('p', { className: "mb-2.5 text-[11.5px] leading-snug text-paper/70" }, "Your cabin lamp — updates live across campus directory."),
+          h('p', { className: "mb-2.5 text-[11.5px] leading-snug text-paper/70" }, "Your cabin lamp — updates live across campus directory & open tabs."),
           h('div', { className: "flex flex-col gap-1.5" },
             ["free", "busy", "out"].map(st =>
               h('button', {
